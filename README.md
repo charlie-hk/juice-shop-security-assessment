@@ -33,7 +33,7 @@ A complete assessment deliverable, not a tutorial:
 | JS-01 | SQL injection authentication bypass | INPV-05 / ATHN-04 | **Critical** | 9.8 |
 | JS-02 | IDOR on baskets (broken access control) | ATHZ-04 | High | 8.1 |
 | JS-03 | Administration panel privilege escalation | ATHZ-02 | High | 8.8 |
-| JS-04 | Forgeable JWT session token | ATHN / SESS | High | 8.1 |
+| JS-04 | Sensitive data exposed in JWT payload | SESS / CRYP | Medium | 5.3 |
 | JS-05 | Stored / DOM cross-site scripting | INPV-01/02 | High | 7.2 |
 | JS-06 | Exposed backup & configuration files | CONF-04 | Medium | 6.5 |
 | JS-07 | Security misconfiguration (errors, headers) | CONF-02 / ERRH | Medium | 5.3 |

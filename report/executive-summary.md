@@ -19,8 +19,8 @@ input validation, configuration and business logic.
 | Severity | Count |
 |----------|-------|
 | Critical | 1 |
-| High | 4 |
-| Medium | 3 |
+| High | 3 |
+| Medium | 4 |
 | Low | 0 |
 
 ## Key risks
@@ -30,10 +30,11 @@ input validation, configuration and business logic.
   credentials. This single flaw compromises the whole application.
 - **Broken access control (High).** Users can read and alter other users' data (baskets)
   by changing an identifier, and reach administrative functionality not intended for them.
-- **Forgeable session tokens (High).** Weak JWT handling allows identity and role to be
-  tampered with independently of the login flow.
 - **Cross-site scripting (High).** Unencoded rendering of user input allows script
   execution in victims' sessions, including stored variants affecting many users.
+- **Sensitive data in the session token (Medium).** The JWT payload carries the user's
+  role, email and password hash in cleartext; combined with the XSS above, a stolen
+  token hands an attacker that data directly.
 
 ## Overall assessment
 

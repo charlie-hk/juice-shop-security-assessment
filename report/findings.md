@@ -117,38 +117,60 @@ non-administrators.
 
 ---
 
-## JS-04 — Forgeable JWT: unsigned/known-key token accepted
+## JS-04 — Sensitive data exposed in session token (JWT)
 
 | | |
 |---|---|
-| **Severity** | High (8.1) |
-| **WSTG** | WSTG-SESS-related; WSTG-ATHN |
-| **CVSS v3.1** | `AV:N/AC:H/PR:N/UI:N/S:U/C:H/I:H/A:N` |
+| **Severity** | Medium (5.3) |
+| **WSTG** | WSTG-SESS-related; WSTG-CRYP |
+| **CVSS v3.1** | `AV:N/AC:L/PR:L/UI:N/S:U/C:H/I:N/A:N` |
 | **Component** | JWT issuance/validation (`Authorization: Bearer`) |
 
 ### Description
-Session tokens are JWTs whose signing material and algorithm handling are weak. The
-token payload (including the user identity/role) can be altered and re-presented in
-ways the server accepts, because algorithm and signature validation are not strictly
-enforced (e.g. `alg` confusion / known key).
+The session token is a JWT whose payload is a plain base64url-encoded JSON object with
+no encryption. It carries sensitive fields in cleartext to anyone who can read the
+token, including the user's role, email, and the stored password hash. A JWT payload is
+not a secret; anything placed in it is readable by the client and by anyone who obtains
+the token (e.g. via XSS, see JS-05).
 
-### Reproduction
-1. Capture the `Authorization: Bearer <jwt>` header after logging in.
-2. Decode the JWT at jwt.io or with `jwt_tool`. Observe the user object in the payload.
-3. Modify the payload (e.g. change the email/role), re-sign under the weak/known key or
-   abuse the algorithm handling, and replay the request.
-4. The server honours the forged identity.
+### Reproduction (performed)
+1. Authenticate and read the token from browser storage:
+   ```js
+   localStorage.getItem('token')
+   ```
+2. Decode the payload (second dot-separated segment) in the console:
+   ```js
+   JSON.parse(atob(localStorage.getItem('token').split('.')[1]))
+   ```
+3. The decoded object exposes the full user record, including:
+   - `role: "admin"`
+   - `email`
+   - `password` (the stored password hash)
+   - account metadata (id, timestamps, profile image path)
+
+The token header also shows the signing algorithm (`RS256`), confirming the payload
+structure is fully transparent to the holder.
 
 ### Impact
-Identity spoofing and privilege escalation via token tampering, independent of the
-login flow.
+Disclosure of the user's role, email and password hash to any party holding the token.
+Combined with the XSS finding (JS-05), which can exfiltrate the token from storage, this
+hands an attacker the account's privilege level and credential hash directly. Putting a
+password hash in a client-readable token is a cryptographic storage/exposure failure.
+
+> **Note on scope.** This finding documents the *payload disclosure* that was directly
+> reproduced. A stronger follow-up test — forging the payload (altering `role`) and
+> re-signing to achieve privilege escalation — was not performed in this assessment and
+> would require signing-key analysis with a tool such as `jwt_tool`; it is noted as
+> recommended further testing rather than a confirmed finding.
 
 ### Remediation
-- Use a strong, secret signing key held only on the server; rotate it and keep it out
-  of source control.
-- Pin the expected algorithm server-side (e.g. RS256) and reject any token whose `alg`
-  differs; never accept `none`.
-- Keep token lifetimes short and validate all standard claims (`exp`, `iss`, `aud`).
+- Never place secrets in a JWT payload. Remove the password hash and any sensitive
+  field; keep only an opaque identifier and the minimum claims needed.
+- Treat the token as readable by the client at all times; store authorisation-relevant
+  data server-side, keyed by a session/user id.
+- Keep token lifetimes short, store tokens so they are not reachable by page script
+  where possible, and validate all standard claims (`exp`, `iss`, `aud`) plus a pinned
+  algorithm server-side.
 
 ---
 
@@ -227,13 +249,25 @@ Disclosure of coupon logic, internal documents and configuration, aiding further
 
 ### Description
 Error responses can return stack traces and framework details, disclosing internal
-structure. Security-relevant response headers (CSP, HSTS, X-Content-Type-Options,
-etc.) are absent or weak.
+structure. Some security response headers are present (`X-Content-Type-Options: nosniff`,
+`X-Frame-Options: SAMEORIGIN`), but two important ones are absent: there is no
+`Content-Security-Policy` and no `Strict-Transport-Security`. The missing CSP is
+significant because it removes the browser's main defence-in-depth control against the
+XSS in JS-05.
 
-### Reproduction
-1. Send malformed input to an API endpoint (e.g. a bad type to a typed field).
-2. Observe the verbose error / stack trace in the response.
-3. Inspect response headers for missing CSP/HSTS/X-Content-Type-Options.
+### Reproduction (performed)
+1. Inspect response headers from the console:
+   ```js
+   fetch('/').then(r => ['content-security-policy','strict-transport-security',
+     'x-content-type-options','x-frame-options']
+     .forEach(h => console.log(h + ': ' + r.headers.get(h))))
+   ```
+2. Observed result:
+   - `content-security-policy: null` (absent)
+   - `strict-transport-security: null` (absent)
+   - `x-content-type-options: nosniff` (present)
+   - `x-frame-options: SAMEORIGIN` (present)
+3. Sending malformed input to a typed API field returns verbose error detail.
 
 ### Impact
 Information disclosure that accelerates targeted attacks, and weaker in-browser defences.
@@ -281,7 +315,7 @@ Financial manipulation of orders; integrity loss in the purchasing workflow.
 | JS-01 | SQLi auth bypass | INPV-05 / ATHN-04 | Critical | 9.8 |
 | JS-02 | IDOR on baskets | ATHZ-04 | High | 8.1 |
 | JS-03 | Admin panel privilege escalation | ATHZ-02 | High | 8.8 |
-| JS-04 | Forgeable JWT | ATHN / SESS | High | 8.1 |
+| JS-04 | Sensitive data in JWT payload | SESS / CRYP | Medium | 5.3 |
 | JS-05 | Stored/DOM XSS | INPV-01/02 | High | 7.2 |
 | JS-06 | Exposed backup/config files | CONF-04 | Medium | 6.5 |
 | JS-07 | Misconfig: errors & headers | CONF-02 / ERRH | Medium | 5.3 |
